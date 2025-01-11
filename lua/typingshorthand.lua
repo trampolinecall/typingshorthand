@@ -104,6 +104,48 @@ local function create_shorthand_special(short, header, other)
     return "{{ typing shorthand:(" .. short .. ") " .. header .. " " .. other .. " }}"
 end
 
+local function expand(short)
+    -- expand phrases
+    local function helper(short)
+        if short == "" then
+            return {}
+        else
+            local possibilities = shorthands[short] or {}
+
+            for i = 1, #short do
+                local first = string.sub(short, 1, i)
+                local more = string.sub(short, i + 1)
+
+                local first_possibilities = phrase_shorthands[first] or {}
+                local more_possibilities = helper(more)
+
+                for _, first_long in ipairs(first_possibilities) do
+                    for _, more_long in ipairs(more_possibilities) do
+                        local current = first_long .. " " .. more_long
+                        table.insert(possibilities, current)
+                    end
+                end
+            end
+
+            return possibilities
+        end
+    end
+
+    return helper(short)
+end
+local function make_special_from_possibilities(short, possibilities)
+    if #possibilities == 0 then
+        return create_shorthand_special(short, "unknown", short)
+    elseif #possibilities == 1 then
+        return possibilities[1]
+    else
+        return create_shorthand_special(short, "choice", table.concat(possibilities, " | "))
+    end
+end
+local function expand_sub(short)
+    return make_special_from_possibilities(short, expand(short))
+end
+
 local function review()
     vim.cmd("hi link ShorthandReview Search")
     local current_buf = vim.api.nvim_get_current_buf()
@@ -144,12 +186,20 @@ local function review()
             end
 
         elseif header == "unknown" then
-            vim.cmd("redraw!")
-            print("unknown shorthand: '" .. other .. "'")
-            local replacement = vim.fn.input("replacement: ")
-            replace_special(replacement)
-            print("")
-            -- TODO: add option to save it immediately into the shorthand file
+            -- first try reexapnding it in case the shorthand lists have changed:
+            local possibilities = expand(original_short)
+            if #possibilities == 0 then
+                -- if there are still no possibilities
+                vim.cmd("redraw!")
+                print("unknown shorthand: '" .. other .. "'")
+                local replacement = vim.fn.input("replacement: ")
+                replace_special(replacement)
+                print("")
+                -- TODO: add option to save it immediately into the shorthand file
+            else
+                -- if there are possibilities, replace it with the special created from those possibilities and let the next iteration of the loop deal with it
+                replace_special(make_special_from_possibilities(original_short, possibilities))
+            end
         else
             error("invalid typing shorthand special header: " .. header)
         end
@@ -165,46 +215,9 @@ local function convert(startline, endline)
     end
     local allowed_chars_str = table.concat(allowed_chars_list)
 
-    vim.cmd("keeppatterns " .. startline .. "," .. endline .. "s/[" .. allowed_chars_str .. "]\\+/\\=v:lua.require'typingshorthand'.expand(submatch(0))/g")
+    vim.cmd("keeppatterns " .. startline .. "," .. endline .. "s/[" .. allowed_chars_str .. "]\\+/\\=v:lua.require'typingshorthand'.expand_sub(submatch(0))/g")
 
     review()
-end
-
-local function expand(short)
-    -- expand phrases
-    local function helper(short)
-        if short == "" then
-            return {}
-        else
-            local possibilities = shorthands[short] or {}
-
-            for i = 1, #short do
-                local first = string.sub(short, 1, i)
-                local more = string.sub(short, i + 1)
-
-                local first_possibilities = phrase_shorthands[first] or {}
-                local more_possibilities = helper(more)
-
-                for _, first_long in ipairs(first_possibilities) do
-                    for _, more_long in ipairs(more_possibilities) do
-                        local current = first_long .. " " .. more_long
-                        table.insert(possibilities, current)
-                    end
-                end
-            end
-
-            return possibilities
-        end
-    end
-
-    local possibilities = helper(short)
-    if #possibilities == 0 then
-        return create_shorthand_special(short, "unknown", short)
-    elseif #possibilities == 1 then
-        return possibilities[1]
-    else
-        return create_shorthand_special(short, "choice", table.concat(possibilities, " | "))
-    end
 end
 
 return {
@@ -216,5 +229,5 @@ return {
 
     convert = convert,
     review = review,
-    expand = expand,
+    expand_sub = expand_sub,
 }
