@@ -62,10 +62,6 @@ local function setup(config_local)
             table.insert(phrase_shorthands[short], long)
         end
     end
-
-    print(vim.inspect(shorthands))
-    print(vim.inspect(phrase_shorthands))
-    print(vim.inspect(allowed_chars))
 end
 
 local function syntax_off()
