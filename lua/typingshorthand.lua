@@ -4,18 +4,7 @@ local shorthands = nil
 local phrase_shorthands = nil
 local allowed_chars = nil
 
-local function setup(config_local)
-    local function check_key_present(key)
-        if config_local[key] == nil then
-            error("typingshorthand setup config missing key '" .. key .. "'")
-        end
-    end
-
-    check_key_present('shorthands_file')
-    check_key_present('phraseable_words_file')
-
-    config = config_local
-
+local function reload_wordlists()
     local long_to_short = {}
 
     shorthands = {}
@@ -23,9 +12,9 @@ local function setup(config_local)
     allowed_chars = {}
 
     local update_allowed_chars = function(short)
-            for i = 1,#short do
-                allowed_chars[string.sub(short, i, i)] = true
-            end
+        for i = 1,#short do
+            allowed_chars[string.sub(short, i, i)] = true
+        end
     end
 
     for _, line in ipairs(vim.fn.readfile(config.shorthands_file)) do
@@ -63,6 +52,20 @@ local function setup(config_local)
         end
     end
 end
+local function setup(config_local)
+    local function check_key_present(key)
+        if config_local[key] == nil then
+            error("typingshorthand setup config missing key '" .. key .. "'")
+        end
+    end
+
+    check_key_present('shorthands_file')
+    check_key_present('phraseable_words_file')
+
+    config = config_local
+
+    reload_wordlists()
+end
 
 local function syntax_off()
     if vim.w.typingshorthand_syntax_on == true then
@@ -74,7 +77,6 @@ local function syntax_off()
         vim.w.typingshorthand_syntax_on = false
     end
 end
-
 local function syntax_on()
     if vim.w.typingshorthand_syntax_on == false or vim.w.typingshorthand_syntax_on == nil then
         -- TODO: fix this concealling and make it nicer
@@ -146,6 +148,29 @@ local function expand_sub(short)
     return make_special_from_possibilities(short, expand(short))
 end
 
+local function add_new_words()
+    local wordlist_words = vim.split(vim.fn.input("lines to add to wordlist (lines separated by semicolons): "), ";")
+    local phraselist_words = vim.split(vim.fn.input("lines to add to phraseable word list (lines separated by semicolons): "), ";")
+
+    if not (#wordlist_words == 1 and wordlist_words[1] == "") then
+        local wordlist = vim.fn.readfile(config.shorthands_file)
+        for _, wordlist_line in ipairs(wordlist_words) do
+            table.insert(wordlist, wordlist_line:match("^%s*(.-)%s*$"))
+        end
+        vim.fn.writefile(wordlist, config.shorthands_file)
+    end
+
+    if not (#phraselist_words == 1 and phraselist_words[1] == "") then
+        local phraselist = vim.fn.readfile(config.phraseable_words_file)
+        for _, phraselist_line in ipairs(phraselist_words) do
+            table.insert(phraselist, phraselist_line:match("^%s*(.-)%s*$"))
+        end
+        vim.fn.writefile(phraselist, config.phraseable_words_file)
+    end
+
+    reload_wordlists()
+end
+
 local function review()
     vim.cmd("hi link ShorthandReview Search")
     local current_buf = vim.api.nvim_get_current_buf()
@@ -173,18 +198,15 @@ local function review()
             end
 
             vim.cmd("redraw!")
-            vim.print("choose replacement (choose 0 for custom):")
+
+            vim.print("choose replacement (0 or empty to add word to wordlist):")
             local chosen = vim.fn.inputlist(choices_with_numbers)
-            if chosen ~= 0 then
+            if chosen > 0 and chosen <= #choices then
                 replace_special(choices[chosen])
             else
-                -- TODO: unduplicate this code with below
-                local replacement = vim.fn.input("replacement: ")
-                replace_special(replacement)
-                print("")
-                -- TODO: add option to save it immediately to the shorthand file (although this would need tweaks to have the original short version)
+                add_new_words()
+                replace_special(make_special_from_possibilities(original_short, expand(original_short)))
             end
-
         elseif header == "unknown" then
             -- first try reexapnding it in case the shorthand lists have changed:
             local possibilities = expand(original_short)
@@ -192,10 +214,8 @@ local function review()
                 -- if there are still no possibilities
                 vim.cmd("redraw!")
                 print("unknown shorthand: '" .. other .. "'")
-                local replacement = vim.fn.input("replacement: ")
-                replace_special(replacement)
-                print("")
-                -- TODO: add option to save it immediately into the shorthand file
+                add_new_words()
+                replace_special(make_special_from_possibilities(original_short, expand(original_short)))
             else
                 -- if there are possibilities, replace it with the special created from those possibilities and let the next iteration of the loop deal with it
                 replace_special(make_special_from_possibilities(original_short, possibilities))
@@ -226,6 +246,8 @@ return {
     syntax_on = syntax_on,
     syntax_off = syntax_off,
     syntax_toggle = syntax_toggle,
+
+    add_new_words = add_new_words,
 
     convert = convert,
     review = review,
