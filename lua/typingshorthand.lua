@@ -123,7 +123,7 @@ local function expand(short)
 
                 for _, first_long in ipairs(first_possibilities) do
                     for _, more_long in ipairs(more_possibilities) do
-                        local current = first_long .. " " .. more_long
+                        local current = { first_long, unpack(more_long) }
                         table.insert(possibilities, current)
                     end
                 end
@@ -133,7 +133,12 @@ local function expand(short)
         end
     end
 
-    return helper(short)
+    local possibilities_arrays = helper(short)
+    local possibilities = {}
+    for _, possibility in ipairs(possibilities_arrays) do
+        table.insert(possibilities, table.concat(possibility, " "))
+    end
+    return possibilities
 end
 local function make_special_from_possibilities(short, possibilities)
     if #possibilities == 0 then
