@@ -189,6 +189,7 @@ local function review()
         local header = current_match.submatches[2]
         local other = current_match.submatches[3]
 
+        vim.fn.cursor(current_match.lnum, current_match.byteidx + 1)
         local matchaddindex = vim.fn.matchadd("ShorthandReview", "\\%" .. current_match.lnum .. "l" .. "\\%" .. current_match.byteidx + 1 .. "c" .. ".\\{" .. string.len(current_match.text) .. "}")
 
         local function replace_special(replacement)
