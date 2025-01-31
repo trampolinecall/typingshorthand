@@ -1,14 +1,31 @@
 local config = nil
 
-local shorthands = nil
-local phrase_shorthands = nil
+local shorthands = { short_to_long = {}, long_to_short = {} }
+local phrase_shorthands = { short_to_long = {}, long_to_short = {} }
 local allowed_chars = nil
 
-local function reload_wordlists()
-    local long_to_short = {}
+local function add_shorthand(dictionary, long, short)
+    if dictionary.short_to_long[short] == nil then
+        dictionary.short_to_long[short] = {}
+    end
+    table.insert(dictionary.short_to_long[short], long)
 
-    shorthands = {}
-    phrase_shorthands = {}
+    if dictionary.long_to_short[long] == nil then
+        dictionary.long_to_short[long] = {}
+    end
+    table.insert(dictionary.long_to_short[long], short)
+end
+
+local function get_longs(dictionary, short)
+    return dictionary.short_to_long[short] or {}
+end
+local function get_shorts(dictionary, long)
+    return dictionary.long_to_short[long] or {}
+end
+
+local function reload_wordlists()
+    shorthands = { short_to_long = {}, long_to_short = {} }
+    phrase_shorthands = { short_to_long = {}, long_to_short = {} }
     allowed_chars = {}
 
     local update_allowed_chars = function(short)
@@ -20,17 +37,12 @@ local function reload_wordlists()
     for _, line in ipairs(vim.fn.readfile(config.shorthands_file)) do
         if not vim.startswith(line, ";") and vim.fn.match(line, "^\\s*$") == -1 then
             local long, short = unpack(vim.split(line, " ", { plain = true }))
-            assert(long ~= nil)
-            assert(short ~= nil)
+            assert(long ~= nil, "long is nil on line '" .. line .. "' of file '" .. config.shorthands_file .. "'")
+            assert(short ~= nil, "short is nil on line '" .. line .. "' of file '" .. config.shorthands_file .. "'")
 
             update_allowed_chars(short)
 
-            long_to_short[long] = short
-
-            if shorthands[short] == nil then
-                shorthands[short] = {}
-            end
-            table.insert(shorthands[short], long)
+            add_shorthand(shorthands, long, short)
         end
     end
 
@@ -38,20 +50,24 @@ local function reload_wordlists()
         if not vim.startswith(line, ";") and vim.fn.match(line, "^\\s*$") == -1 then
             -- give the option of having custom short forms that can only be used in phrases
             local long, short_or_nil = unpack(vim.split(line, " ", { plain = true }))
-            local short = short_or_nil or long_to_short[long]
-
-            assert(long ~= nil)
-            assert(short ~= nil)
-
-            update_allowed_chars(short)
-
-            if phrase_shorthands[short] == nil then
-                phrase_shorthands[short] = {}
+            local shorts
+            if short_or_nil == nil then
+                shorts = get_shorts(shorthands, long)
+            else
+                shorts = { short_or_nil }
             end
-            table.insert(phrase_shorthands[short], long)
+
+            assert(long ~= nil, "long is nil on line '" .. line .. "' of file '" .. config.phraseable_words_file .. "'")
+
+            for _, short in ipairs(shorts) do
+                update_allowed_chars(short)
+
+                add_shorthand(phrase_shorthands, long, short)
+            end
         end
     end
 end
+
 local function setup(config_local)
     local function check_key_present(key)
         if config_local[key] == nil then
@@ -110,15 +126,18 @@ local function expand(short)
     -- expand phrases
     local function helper(short)
         if short == "" then
-            return {}
+            return { {} }
         else
-            local possibilities = shorthands[short] or {}
+            local possibilities = {}
+            for _, normal_long in ipairs(get_longs(shorthands, short)) do
+                table.insert(possibilities, { normal_long })
+            end
 
             for i = 1, #short do
                 local first = string.sub(short, 1, i)
                 local more = string.sub(short, i + 1)
 
-                local first_possibilities = phrase_shorthands[first] or {}
+                local first_possibilities = get_longs(phrase_shorthands, first)
                 local more_possibilities = helper(more)
 
                 for _, first_long in ipairs(first_possibilities) do
