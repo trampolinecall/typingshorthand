@@ -133,7 +133,7 @@ local function expand(short)
                 table.insert(possibilities, { normal_long })
             end
 
-            for i = 1, #short do
+            for i = 1, #short-1 do
                 local first = string.sub(short, 1, i)
                 local more = string.sub(short, i + 1)
 
