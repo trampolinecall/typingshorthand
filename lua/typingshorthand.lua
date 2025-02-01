@@ -1,10 +1,10 @@
-local config = nil
+config = nil
 
-local shorthands = { short_to_long = {}, long_to_short = {} }
-local phrase_shorthands = { short_to_long = {}, long_to_short = {} }
-local allowed_chars = nil
+shorthands = { short_to_long = {}, long_to_short = {} }
+phrase_shorthands = { short_to_long = {}, long_to_short = {} }
+allowed_chars = nil
 
-local function add_shorthand(dictionary, long, short)
+function add_shorthand(dictionary, long, short)
     if dictionary.short_to_long[short] == nil then
         dictionary.short_to_long[short] = {}
     end
@@ -16,14 +16,14 @@ local function add_shorthand(dictionary, long, short)
     table.insert(dictionary.long_to_short[long], short)
 end
 
-local function get_longs(dictionary, short)
+function get_longs(dictionary, short)
     return dictionary.short_to_long[short] or {}
 end
-local function get_shorts(dictionary, long)
+function get_shorts(dictionary, long)
     return dictionary.long_to_short[long] or {}
 end
 
-local function reload_wordlists()
+function reload_wordlists()
     shorthands = { short_to_long = {}, long_to_short = {} }
     phrase_shorthands = { short_to_long = {}, long_to_short = {} }
     allowed_chars = {}
@@ -41,7 +41,6 @@ local function reload_wordlists()
             assert(short ~= nil, "short is nil on line '" .. line .. "' of file '" .. config.shorthands_file .. "'")
 
             update_allowed_chars(short)
-
             add_shorthand(shorthands, long, short)
         end
     end
@@ -61,14 +60,13 @@ local function reload_wordlists()
 
             for _, short in ipairs(shorts) do
                 update_allowed_chars(short)
-
                 add_shorthand(phrase_shorthands, long, short)
             end
         end
     end
 end
 
-local function setup(config_local)
+function setup(config_local)
     local function check_key_present(key)
         if config_local[key] == nil then
             error("typingshorthand setup config missing key '" .. key .. "'")
@@ -77,24 +75,29 @@ local function setup(config_local)
 
     check_key_present('shorthands_file')
     check_key_present('phraseable_words_file')
+    check_key_present('expand_characters')
 
     config = config_local
 
     reload_wordlists()
 end
 
-local function syntax_off()
-    if vim.w.typingshorthand_syntax_on == true then
+function off()
+    if vim.b.typingshorthand_on == true then
         vim.cmd([[
             syn clear TypingShorthandConceal
             syn clear TypingShorthandSpecial
         ]])
 
-        vim.w.typingshorthand_syntax_on = false
+        for _, expand_char in ipairs(config.expand_characters) do
+            vim.keymap.del('i', expand_char, { buffer = 0 })
+        end
+
+        vim.b.typingshorthand_on = false
     end
 end
-local function syntax_on()
-    if vim.w.typingshorthand_syntax_on == false or vim.w.typingshorthand_syntax_on == nil then
+function on()
+    if vim.b.typingshorthand_on == false or vim.b.typingshorthand_on == nil then
         -- TODO: fix this concealling and make it nicer
         vim.cmd([[
             syn region TypingShorthandSpecial start=/{{ typing shorthand:/ end=/ }}/ contains=TypingShorthandConceal
@@ -105,24 +108,30 @@ local function syntax_on()
             hi link TypingShorthandConceal Comment
         ]])
 
-        vim.w.typingshorthand_syntax_on = true
+        for _, expand_char in ipairs(config.expand_characters) do
+            print(vim.inspect('<C-O>:lua require("typingshorthand").expand_before_cursor()<CR>' .. expand_char))
+            vim.keymap.set('i', expand_char, '<C-O>:lua require("typingshorthand").expand_before_cursor()<CR>' .. expand_char, { buffer = 0 })
+
+        end
+
+        vim.b.typingshorthand_on = true
     end
 end
 
-local function syntax_toggle()
-    if vim.w.typingshorthand_syntax_on == true then
-        syntax_off()
-    elseif vim.w.typingshorthand_syntax_on == false or vim.w.typingshorthand_syntax_on == nil then
-        syntax_on()
+function toggle()
+    if vim.b.typingshorthand_on == true then
+        off()
+    elseif vim.b.typingshorthand_on == false or vim.b.typingshorthand_on == nil then
+        on()
     end
 end
 
 local shorthand_special_regex = "{{ typing shorthand:(\\(.\\{-}\\)) \\(\\w\\{-}\\) \\(.\\{-}\\) }}"
-local function create_shorthand_special(short, header, other)
+function create_shorthand_special(short, header, other)
     return "{{ typing shorthand:(" .. short .. ") " .. header .. " " .. other .. " }}"
 end
 
-local function expand(short)
+function expand(short)
     -- expand phrases
     local function helper(short)
         if short == "" then
@@ -159,7 +168,7 @@ local function expand(short)
     end
     return possibilities
 end
-local function make_special_from_possibilities(short, possibilities)
+function make_special_from_possibilities(short, possibilities)
     if #possibilities == 0 then
         return create_shorthand_special(short, "unknown", short)
     elseif #possibilities == 1 then
@@ -168,11 +177,11 @@ local function make_special_from_possibilities(short, possibilities)
         return create_shorthand_special(short, "choice", table.concat(possibilities, " | "))
     end
 end
-local function expand_sub(short)
+function expand_sub(short)
     return make_special_from_possibilities(short, expand(short))
 end
 
-local function add_new_words()
+function add_new_words()
     local wordlist_words = vim.split(vim.fn.input("lines to add to wordlist (lines separated by semicolons): "), ";")
     local phraselist_words = vim.split(vim.fn.input("lines to add to phraseable word list (lines separated by semicolons): "), ";")
 
@@ -195,7 +204,7 @@ local function add_new_words()
     reload_wordlists()
 end
 
-local function review()
+function review()
     vim.cmd("hi link ShorthandReview Search")
     local current_buf = vim.api.nvim_get_current_buf()
     while true do
@@ -253,28 +262,52 @@ local function review()
     end
     vim.cmd("hi clear ShorthandReview")
 end
-local function convert(startline, endline)
-    local allowed_chars_list = {}
-    for char, _ in pairs(allowed_chars) do
-        table.insert(allowed_chars_list, char)
+function expand_before_cursor()
+    local current_cursor_row, current_cursor_col = unpack(vim.api.nvim_win_get_cursor(0))
+    current_cursor_row = current_cursor_row - 1 -- row is 1 indexed, not 0 indexed
+
+    local line_length = #vim.api.nvim_buf_get_lines(0, current_cursor_row, current_cursor_row + 1, false)[1]
+
+    local start_col
+    local end_col
+
+    if line_length == 0 then
+        start_col = 0
+        end_col = 0
+    else
+        start_col = current_cursor_col
+        while true do
+            local char = vim.api.nvim_buf_get_text(0, current_cursor_row, start_col, current_cursor_row, start_col + 1, {})[1]
+            if allowed_chars[char] == true then
+                start_col = start_col - 1
+
+                if start_col == -1 then
+                    start_col = 0
+                    break
+                end
+            else
+                start_col = start_col + 1
+                break
+            end
+        end
+        end_col = current_cursor_col + 1
     end
-    local allowed_chars_str = table.concat(allowed_chars_list)
 
-    vim.cmd("keeppatterns " .. startline .. "," .. endline .. "s/[" .. allowed_chars_str .. "]\\+/\\=v:lua.require'typingshorthand'.expand_sub(submatch(0))/g")
-
-    review()
+    local short = vim.api.nvim_buf_get_text(0, current_cursor_row, start_col, current_cursor_row, end_col, {})[1]
+    vim.api.nvim_buf_set_text(0, current_cursor_row, start_col, current_cursor_row, end_col, { "" })
+    vim.api.nvim_put({ expand_sub(short) }, "c", false, true)
 end
 
 return {
     setup = setup,
 
-    syntax_on = syntax_on,
-    syntax_off = syntax_off,
-    syntax_toggle = syntax_toggle,
+    on = on,
+    off = off,
+    toggle = toggle,
 
     add_new_words = add_new_words,
 
-    convert = convert,
     review = review,
     expand_sub = expand_sub,
+    expand_before_cursor = expand_before_cursor,
 }
