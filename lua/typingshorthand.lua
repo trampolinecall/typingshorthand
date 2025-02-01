@@ -109,7 +109,6 @@ function on()
         ]])
 
         for _, expand_char in ipairs(config.expand_characters) do
-            print(vim.inspect('<C-O>:lua require("typingshorthand").expand_before_cursor()<CR>' .. expand_char))
             vim.keymap.set('i', expand_char, '<C-O>:lua require("typingshorthand").expand_before_cursor()<CR>' .. expand_char, { buffer = 0 })
 
         end
