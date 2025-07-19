@@ -109,7 +109,7 @@ function on()
         ]])
 
         for _, expand_char in ipairs(config.expand_characters) do
-            vim.keymap.set('i', expand_char, '<C-O>:lua require("typingshorthand").expand_before_cursor()<CR>' .. expand_char, { buffer = 0 })
+            vim.keymap.set('i', expand_char, '<C-O>:lua require("typingshorthand").expand_before_cursor()<CR>' .. expand_char, { buffer = 0, silent = true })
 
         end
 
@@ -132,6 +132,7 @@ end
 
 function expand(short)
     -- expand phrases
+    -- TODO: revamp how phrases are going to work because this allows too many options (limit phrases only to common syntactical constructions in english like most other shorthands do? and then just list them all out in the dictionary file so that this doesn't need to handle phrases specially at all?)
     local function helper(short)
         if short == "" then
             return { {} }
@@ -141,7 +142,7 @@ function expand(short)
                 table.insert(possibilities, { normal_long })
             end
 
-            for i = 1, #short-1 do
+            for i = #short-1, 1, -1 do
                 local first = string.sub(short, 1, i)
                 local more = string.sub(short, i + 1)
 
@@ -234,6 +235,7 @@ function review()
 
             vim.print("choose replacement (0 or empty to add word to wordlist):")
             local chosen = vim.fn.inputlist(choices_with_numbers)
+            -- TODO: add options to rewrite as new shorthand, to manually enter longhand, and leave unexpanded and as is
             if chosen > 0 and chosen <= #choices then
                 replace_special(choices[chosen])
             else
